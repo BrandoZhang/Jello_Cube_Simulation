@@ -38,6 +38,21 @@ void mouseMotionDrag(int x, int y)
 {
   int vMouseDelta[2] = {x-g_vMousePos[0], y-g_vMousePos[1]};
 
+  if (g_iLeftMouseButton && selected)
+  {
+      pCPY(jello.p[4][4][4], mouseForceOrigin);  // attaches force origin to jello center (roughly)
+      int winY;
+      float winZ;
+      glGetIntegerv(GL_VIEWPORT, viewport);  // x, y, width, height
+      glGetDoublev(GL_MODELVIEW_MATRIX, modelViewMatrix);
+      glGetDoublev(GL_PROJECTION_MATRIX, projectionMatrix);
+      winY = viewport[3] - y;  // converts origin from upper left to bottom left
+      glReadPixels(x, winY, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &winZ);
+      /* Figures out world space coordinate of the released point */
+      gluUnProject(x, winY, winZ, modelViewMatrix, projectionMatrix, viewport,
+          &(mouseForceDest.x), &(mouseForceDest.y), &(mouseForceDest.z));
+  }
+
   if (g_iRightMouseButton) // handle camera rotations
   {
     Phi += vMouseDelta[0] * 0.01;
@@ -72,6 +87,34 @@ void mouseButton(int button, int state, int x, int y)
   {
     case GLUT_LEFT_BUTTON:
       g_iLeftMouseButton = (state==GLUT_DOWN);
+      /* When press mouse left button, check if jello is selected */
+      if (state == GLUT_DOWN)
+      {
+          /* Fetches screen coordinates of selected point */
+          int winY;
+          float winZ;
+          double length;
+          struct point distance;
+          glGetIntegerv(GL_VIEWPORT, viewport);  // x, y, width, height
+          glGetDoublev(GL_MODELVIEW_MATRIX, modelViewMatrix);
+          glGetDoublev(GL_PROJECTION_MATRIX, projectionMatrix);
+          winY = viewport[3] - y;  // converts origin from upper left to bottom left
+          glReadPixels(x, winY, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &winZ);
+          /* Figures out world space coordinate of the selected point */
+          gluUnProject(x, winY, winZ, modelViewMatrix, projectionMatrix, viewport, 
+              &(mouseForceOrigin.x), &(mouseForceOrigin.y), &(mouseForceOrigin.z));
+          /* Checks if mouse is selecting the jello */
+          pDIFFERENCE(mouseForceOrigin, jello.p[4][4][4], distance);  // for simplicity, not using the jello center
+          pNORMALIZE(distance);
+          if (length <= jello.restLenSheerInternal * 5)  // estimated threshold
+              selected = 1;  // marks as selected
+      }
+      /* When release mouse left button, store the strength of force */
+      if (selected && state == GLUT_UP)
+      {
+          pDIFFERENCE(mouseForceDest, mouseForceOrigin, mouseForceStrength);
+          selected = 0;  // reset as not selected
+      }
       break;
     case GLUT_MIDDLE_BUTTON:
       g_iMiddleMouseButton = (state==GLUT_DOWN);
@@ -132,6 +175,14 @@ void keyboardFunc (unsigned char key, int x, int y)
 
     case ' ':
       saveScreenToFile = 1 - saveScreenToFile;
+      break;
+
+    case 'c':  // render coordinate system axes
+      coordinateAxes = 1 - coordinateAxes;
+      break;
+
+    case 'f':  // display FPS and resolution
+      showFPS = 1 - showFPS;
       break;
   }
 }

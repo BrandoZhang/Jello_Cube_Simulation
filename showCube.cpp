@@ -291,3 +291,164 @@ void showBoundingBox()
   return;
 }
 
+/* Draws 3D arrow */
+void drawArrow(struct point origin, struct point destination, float headWidth, float headLength, GLfloat red, GLfloat green, GLfloat blue)
+{
+    double length;
+    struct point arrow, upVec, rightVec, arrowHeadLeft, arrowHeadRight, temp;
+    GLfloat prevColor[4];
+    
+    /* Calculates the vertex coordinates of arrow heads */
+    pMAKE(0.0, 1.0, 0.0, upVec);  // up vector of the world
+    pDIFFERENCE(destination, origin, arrow);
+    pNORMALIZE(arrow);
+    CROSSPRODUCTp(arrow, upVec, rightVec);
+    if (rightVec.x == 0.0 && rightVec.y == 0.0 && rightVec.z == 0)
+    {
+        pMAKE(1.0, 0.0, 0.0, rightVec);  // hard fix
+    }
+
+    pMULTIPLY(arrow, headLength, arrowHeadRight);
+    pDIFFERENCE(destination, arrowHeadRight, arrowHeadRight);
+    pMULTIPLY(rightVec, headWidth, temp);
+    pSUM(arrowHeadRight, temp, arrowHeadRight);
+    pMULTIPLY(temp, -2.0, temp);
+    pSUM(arrowHeadRight, temp, arrowHeadLeft);
+
+    glGetFloatv(GL_CURRENT_COLOR, prevColor);  // fetch previous applied color
+    glColor3f(red, green, blue);
+    
+    glDisable(GL_CULL_FACE);
+    glBegin(GL_TRIANGLES);
+        glVertex3d(destination.x, destination.y, destination.z);
+        glVertex3d(arrowHeadLeft.x, arrowHeadLeft.y, arrowHeadLeft.z);
+        glVertex3d(arrowHeadRight.x, arrowHeadRight.y, arrowHeadRight.z);
+    glEnd();
+    glBegin(GL_LINES);
+        glVertex3d(origin.x, origin.y, origin.z);
+        glVertex3d(destination.x, destination.y, destination.z);
+    glEnd();
+    glColor3fv(prevColor);  // restores previous color
+    glEnable(GL_CULL_FACE);
+}
+
+
+/* Displays the positive x-axis, y-axis, and z-axis in current coordinate.
+ * Refer to `openGLHelloWorld.cpp`
+ */
+void showCoordinate()
+{
+    double prevLineWidth;
+    glGetDoublev(GL_LINE_WIDTH, &prevLineWidth);  // record original line width
+
+    glLineWidth(4.0);  // set axes line width
+    struct point origin, xPositive, yPositive, zPositive;
+    pMAKE(0.0, 0.0, 0.0, origin);
+    pMAKE(1.0, 0.0, 0.0, xPositive);
+    pMAKE(0.0, 1.0, 0.0, yPositive);
+    pMAKE(0.0, 0.0, 1.0, zPositive);
+    /* x-axis */
+
+    drawArrow(origin, xPositive, 0.1, 0.1, 1.0, 0.0, 0.0);  // Red
+    /* y-axis */
+    drawArrow(origin, yPositive, 0.1, 0.1, 0.0, 1.0, 0.0);  // Green
+    /* z-axis */
+    drawArrow(origin, zPositive, 0.1, 0.1, 0.0, 0.0, 1.0);  // Blue
+
+    glLineWidth(prevLineWidth);  // restore line width setting
+    return;
+}
+
+/* Computes the intersection point of a segment with a plane.
+ * If there's only one intersection, return true; otherwise, return false.
+ */
+bool segmentPlaneIntersection(double a, double b, double c, double d, struct point segOrig, struct point segDest, int & ptIdx, struct point * intersections)
+{
+    double denominator, signedDist;
+    pDIFFERENCE(segDest, segOrig, segDest);  // segDest becomes a vector pointing from segOrig to original segDest
+    denominator = a * segDest.x + b * segDest.y + c * segDest.z;
+
+    /* If the segment is parallel or on the plane, return false.
+     * Even if the segment is on the plane, for this bounding box scenario, it's fine.
+     */
+    if (denominator == 0)
+        return false;
+
+    signedDist = - (a * segOrig.x + b * segOrig.y + c * segOrig.z + d) / denominator;
+
+    /* If the intersection is outside the segment */
+    if (signedDist < 0.0 || signedDist > 1.0)
+        return false;
+
+    struct point intersectPt;
+    pMULTIPLY(segDest, signedDist, segDest);
+    pSUM(segOrig, segDest, intersectPt);
+    pCPY(intersectPt, intersections[ptIdx]);
+    ptIdx++;
+    return true;
+}
+
+/* Displays the inclined plane */
+void showInclinedPlane(struct world * jello)
+{
+    int numIntersection = 0;
+    struct point segOrigin, segDest, tempPt;
+    struct point intersections[12];  // maximum number of possible intersections is 6
+
+    /* Evaluates intersections on 12 edges */
+    pMAKE(-2.0, -2.0, -2.0, segOrigin);
+
+    pMAKE(-2.0, -2.0, 2.0, segDest);
+    segmentPlaneIntersection(jello->a, jello->b, jello->c, jello->d, segOrigin, segDest, numIntersection, intersections);
+    pMAKE(-2.0, 2.0, -2.0, segDest);
+    segmentPlaneIntersection(jello->a, jello->b, jello->c, jello->d, segOrigin, segDest, numIntersection, intersections);
+    pMAKE(2.0, -2.0, -2.0, segDest);
+    segmentPlaneIntersection(jello->a, jello->b, jello->c, jello->d, segOrigin, segDest, numIntersection, intersections);
+
+    pMAKE(2.0, 2.0, -2.0, segOrigin);
+
+    pMAKE(-2.0, 2.0, -2.0, segDest);
+    segmentPlaneIntersection(jello->a, jello->b, jello->c, jello->d, segOrigin, segDest, numIntersection, intersections);
+    pMAKE(2.0, -2.0, -2.0, segDest);
+    segmentPlaneIntersection(jello->a, jello->b, jello->c, jello->d, segOrigin, segDest, numIntersection, intersections);
+    pMAKE(2.0, 2.0, 2.0, segDest);
+    segmentPlaneIntersection(jello->a, jello->b, jello->c, jello->d, segOrigin, segDest, numIntersection, intersections);
+
+    pMAKE(-2.0, 2.0, 2.0, segOrigin);
+
+    pMAKE(-2.0, -2.0, 2.0, segDest);
+    segmentPlaneIntersection(jello->a, jello->b, jello->c, jello->d, segOrigin, segDest, numIntersection, intersections);
+    pMAKE(2.0, 2.0, 2.0, segDest);
+    segmentPlaneIntersection(jello->a, jello->b, jello->c, jello->d, segOrigin, segDest, numIntersection, intersections);
+    pMAKE(-2.0, 2.0, -2.0, segDest);
+    segmentPlaneIntersection(jello->a, jello->b, jello->c, jello->d, segOrigin, segDest, numIntersection, intersections);
+
+    pMAKE(2.0, -2.0, 2.0, segOrigin);
+
+    pMAKE(-2.0, -2.0, 2.0, segDest);
+    segmentPlaneIntersection(jello->a, jello->b, jello->c, jello->d, segOrigin, segDest, numIntersection, intersections);
+    pMAKE(2.0, 2.0, 2.0, segDest);
+    segmentPlaneIntersection(jello->a, jello->b, jello->c, jello->d, segOrigin, segDest, numIntersection, intersections);
+    pMAKE(2.0, -2.0, -2.0, segDest);
+    segmentPlaneIntersection(jello->a, jello->b, jello->c, jello->d, segOrigin, segDest, numIntersection, intersections);
+
+
+    if (numIntersection == 0)
+        return;
+
+    // TODO: Sort intersections?
+
+
+    glDisable(GL_CULL_FACE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBegin(GL_POLYGON);
+    glColor4f(1.0, 0.0, 0.0, 0.6);  // red and translucent
+    for (int i = 0; i < numIntersection; ++i)
+    {
+        glVertex3d(intersections[i].x, intersections[i].y, intersections[i].z);
+    }
+    glEnd();
+    glDisable(GL_BLEND);
+    glEnable(GL_CULL_FACE);
+}
